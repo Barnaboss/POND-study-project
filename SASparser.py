@@ -1,5 +1,3 @@
-import os
-from types import SimpleNamespace
 import warnings
 from io import TextIOWrapper
 
@@ -122,134 +120,119 @@ class Operator:
             result += "sensing variables:\t" + str(self.sensing)
         return result
     
-#class POND_instance:
-
-
-def read_SAS_file(filename: str):
-    def check_version(file_obj: TextIOWrapper) -> None:
-        line = file_obj.readline() ; assert line == "begin_version\n" , line
-        line = file_obj.readline() ; assert line == "3.POND\n"        , line
-        line = file_obj.readline() ; assert line == "end_version\n"   , line
-    def check_metric(file_obj: TextIOWrapper)  -> None:
-        line = file_obj.readline() ; assert line == "begin_metric\n"  , line
-        line = file_obj.readline() ; assert line == "0\n"             , "this parser only works for unit-cost modells yet"
-        line = file_obj.readline() ; assert line == "end_metric\n"    , line
-    def read_variables(file_obj: TextIOWrapper) -> list[Variable]:
-        variables = []
-        for _ in range(int(file_obj.readline())):
-            line = file_obj.readline() ; assert line == "begin_variable\n" , line
-            name = file_obj.readline().strip('\n')
-            axiom_layer = file_obj.readline() ; assert axiom_layer == "-1\n" , "variable {name} is a derivate variable, axiom layer != -1 !!".format(name=name)
-            values = []
+class POND_instance:
+    def __init__(self,  variables: list[Variable] , mutex_groups: list[Mutex_Group] , 
+                        initial_state: Initial_State , goal_assignments: Variable_Value_pairing ,
+                        operators: list[Operator]) -> None:
+        self.variables = variables
+        self.mutex_groups = mutex_groups
+        self.initial_state = initial_state
+        self.goal_assignments = goal_assignments
+        self.operators = operators
+    @classmethod
+    def create_from_SAS_file(cls, filename: str) -> None:
+        def check_version(file_obj: TextIOWrapper) -> None:
+            line = file_obj.readline() ; assert line == "begin_version\n" , line
+            line = file_obj.readline() ; assert line == "3.POND\n"        , line
+            line = file_obj.readline() ; assert line == "end_version\n"   , line
+        def check_metric(file_obj: TextIOWrapper)  -> None:
+            line = file_obj.readline() ; assert line == "begin_metric\n"  , line
+            line = file_obj.readline() ; assert line == "0\n"             , "this parser only works for unit-cost modells yet"
+            line = file_obj.readline() ; assert line == "end_metric\n"    , line
+        def read_variables(file_obj: TextIOWrapper) -> list[Variable]:
+            variables = []
             for _ in range(int(file_obj.readline())):
-                values.append(file_obj.readline().strip('\n').replace('Atom ','').replace('Negated','NOT '))
-            line = file_obj.readline() ; assert line == "end_variable\n" , line
-            variables.append(Variable(name, values))
-        return variables
-    def read_mutex_groups(file_obj: TextIOWrapper, variables: list[Variable]) -> list[Mutex_Group]:
-        mutex_groups = []
-        for _ in range(int(file_obj.readline())):
-            line = file_obj.readline() ; assert line == "begin_mutex_group\n" , line
-            var_value_pairs = Variable_Value_pairing.read_from(file_obj, variables)
-            line = file_obj.readline() ; assert line == "end_mutex_group\n" , line
-            mutex_groups.append(Mutex_Group(var_value_pairs))
-        return mutex_groups
-    def read_init_state(file_obj: TextIOWrapper, variables: list[Variable]) -> Initial_State:
-        line = file_obj.readline() ; assert line == "begin_state\n" , line
-        fixed_variables = Variable_Value_pairing.read_from(file_obj, variables)
-        oneof_list = []
-        for _ in range(int(file_obj.readline())):
-            oneof_list.append(OneOf_Constraint.read_from(file_obj, variables))
-        or_list = []
-        for _ in range(int(file_obj.readline())):
-            or_list.append(Or_Constraint.read_from(file_obj.readline().strip("\n"), variables))
-        line = file_obj.readline() ; assert line == "end_state\n" , line
-        return Initial_State(fixed_variables, oneof_list, or_list)
-    def read_goal(file_obj: TextIOWrapper, variables: list[Variable]) -> Variable_Value_pairing:
-        line = file_obj.readline() ; assert line == "begin_goal\n" , line
-        goal_variable_assignments = Variable_Value_pairing.read_from(file_obj, variables)
-        line = file_obj.readline() ; assert line == "end_goal\n" , line
-        return goal_variable_assignments
-    def read_operators(file_obj: TextIOWrapper, variables: list[Variable]) -> list[Mutex_Group]:
-        def read_int_list(file_obj: TextIOWrapper) -> list[int]:
-            return [int(number) for number in file_obj.readline().strip("\n").split()]
-        def read_deterministic_effect() -> tuple[dict[Variable:int],Variable_Value_pairing]:
-            deterministic_effect_preconditions = {}
-            atomic_effects = {}
-            for _ in range(int(file_obj.readline())): ## number of atomic effects per deterministic effect --- this may be zero (e.g. sensing operators)
-                num_effect_conditions , variable_number , precondition_value , effect_value = read_int_list(file_obj)
-                affected_variable = variables[variable_number]
-                if num_effect_conditions != 0:
-                    raise ValueError("dont want to deal with conditional effects :(")
-                if precondition_value  != -1:
-                    deterministic_effect_preconditions[affected_variable] = precondition_value
-                atomic_effects[affected_variable] = effect_value
-            return deterministic_effect_preconditions , Variable_Value_pairing(atomic_effects)
-        def check_effect_preconditions_against_op_precondition_and_return_those_not_already_contained(effect_precondition: dict[Variable:int]) -> dict[Variable:int]:
-            result = {}
-            for variable, value in effect_precondition.items():
-                if precondition.contains(variable):
-                    if precondition.get_value_of(variable) != value:
-                        raise ValueError("effect precondition {} contradicts operator precondition {} in operator {}".format(effect_precondition, precondition, name))
-                else:
-                    result[variable] = value
-            return result
-        def manage_deterministic_effect_preconditions() -> list[Variable_Value_pairing]:
-            filtered_effect_preconditions = [check_effect_preconditions_against_op_precondition_and_return_those_not_already_contained(effect_precondition) for effect_precondition , _ in deterministic_effects]
-            for effect_precondition in filtered_effect_preconditions[1:]:
-                if effect_precondition != filtered_effect_preconditions[0]:
-                    raise ValueError("contradicting effect preconditions ({} VS {}) in operator {}".format(filtered_effect_preconditions[0], effect_precondition, name))
-            precondition.append(filtered_effect_preconditions[0])
-            return [atomic_effects for _ , atomic_effects in deterministic_effects]
-        operators = []
-        for _ in range(int(file_obj.readline())):
-            line = file_obj.readline() ; assert line == "begin_operator\n" , line
-            name = file_obj.readline().strip('\n')
-            precondition: Variable_Value_pairing = Variable_Value_pairing.read_from(file_obj, variables)  # may be empty
-            deterministic_effects = []
-            for _ in range(int(file_obj.readline())): ## number of deterministic effects --- if =1 -> operator deterministic | if >1 -> operator nondeterministic
-                deterministic_effects.append(read_deterministic_effect())
-            deterministic_effects = manage_deterministic_effect_preconditions()
-            line = file_obj.readline() ; assert line == "0\n" , line + name # should be zero due to unit cost metric
-            sensing: Variable_Value_pairing = Variable_Value_pairing.read_from(file_obj, variables) # this can in general be more than one variable and on specific values other than zero
-            line = file_obj.readline() ; assert line == "end_operator\n" , line
-            operators.append(Operator(name, precondition, deterministic_effects, sensing))
-        return operators
+                line = file_obj.readline() ; assert line == "begin_variable\n" , line
+                name = file_obj.readline().strip('\n')
+                axiom_layer = file_obj.readline() ; assert axiom_layer == "-1\n" , "variable {name} is a derivate variable, axiom layer != -1 !!".format(name=name)
+                values = []
+                for _ in range(int(file_obj.readline())):
+                    values.append(file_obj.readline().strip('\n').replace('Atom ','').replace('Negated','NOT '))
+                line = file_obj.readline() ; assert line == "end_variable\n" , line
+                variables.append(Variable(name, values))
+            return variables
+        def read_mutex_groups(file_obj: TextIOWrapper, variables: list[Variable]) -> list[Mutex_Group]:
+            mutex_groups = []
+            for _ in range(int(file_obj.readline())):
+                line = file_obj.readline() ; assert line == "begin_mutex_group\n" , line
+                var_value_pairs = Variable_Value_pairing.read_from(file_obj, variables)
+                line = file_obj.readline() ; assert line == "end_mutex_group\n" , line
+                mutex_groups.append(Mutex_Group(var_value_pairs))
+            return mutex_groups
+        def read_init_state(file_obj: TextIOWrapper, variables: list[Variable]) -> Initial_State:
+            line = file_obj.readline() ; assert line == "begin_state\n" , line
+            fixed_variables = Variable_Value_pairing.read_from(file_obj, variables)
+            oneof_list = []
+            for _ in range(int(file_obj.readline())):
+                oneof_list.append(OneOf_Constraint.read_from(file_obj, variables))
+            or_list = []
+            for _ in range(int(file_obj.readline())):
+                or_list.append(Or_Constraint.read_from(file_obj.readline().strip("\n"), variables))
+            line = file_obj.readline() ; assert line == "end_state\n" , line
+            return Initial_State(fixed_variables, oneof_list, or_list)
+        def read_goal(file_obj: TextIOWrapper, variables: list[Variable]) -> Variable_Value_pairing:
+            line = file_obj.readline() ; assert line == "begin_goal\n" , line
+            goal_variable_assignments = Variable_Value_pairing.read_from(file_obj, variables)
+            line = file_obj.readline() ; assert line == "end_goal\n" , line
+            return goal_variable_assignments
+        def read_operators(file_obj: TextIOWrapper, variables: list[Variable]) -> list[Mutex_Group]:
+            def read_int_list(file_obj: TextIOWrapper) -> list[int]:
+                return [int(number) for number in file_obj.readline().strip("\n").split()]
+            def read_deterministic_effect() -> tuple[dict[Variable:int],Variable_Value_pairing]:
+                deterministic_effect_preconditions = {}
+                atomic_effects = {}
+                for _ in range(int(file_obj.readline())): ## number of atomic effects per deterministic effect --- this may be zero (e.g. sensing operators)
+                    num_effect_conditions , variable_number , precondition_value , effect_value = read_int_list(file_obj)
+                    affected_variable = variables[variable_number]
+                    if num_effect_conditions != 0:
+                        raise ValueError("dont want to deal with conditional effects :(")
+                    if precondition_value  != -1:
+                        deterministic_effect_preconditions[affected_variable] = precondition_value
+                    atomic_effects[affected_variable] = effect_value
+                return deterministic_effect_preconditions , Variable_Value_pairing(atomic_effects)
+            def check_effect_preconditions_against_op_precondition_and_return_those_not_already_contained(effect_precondition: dict[Variable:int]) -> dict[Variable:int]:
+                result = {}
+                for variable, value in effect_precondition.items():
+                    if precondition.contains(variable):
+                        if precondition.get_value_of(variable) != value:
+                            raise ValueError("effect precondition {} contradicts operator precondition {} in operator {}".format(effect_precondition, precondition, name))
+                    else:
+                        result[variable] = value
+                return result
+            def manage_deterministic_effect_preconditions() -> list[Variable_Value_pairing]:
+                filtered_effect_preconditions = [check_effect_preconditions_against_op_precondition_and_return_those_not_already_contained(effect_precondition) for effect_precondition , _ in deterministic_effects]
+                for effect_precondition in filtered_effect_preconditions[1:]:
+                    if effect_precondition != filtered_effect_preconditions[0]:
+                        raise ValueError("contradicting effect preconditions ({} VS {}) in operator {}".format(filtered_effect_preconditions[0], effect_precondition, name))
+                precondition.append(filtered_effect_preconditions[0])
+                return [atomic_effects for _ , atomic_effects in deterministic_effects]
+            operators = []
+            for _ in range(int(file_obj.readline())):
+                line = file_obj.readline() ; assert line == "begin_operator\n" , line
+                name = file_obj.readline().strip('\n')
+                precondition: Variable_Value_pairing = Variable_Value_pairing.read_from(file_obj, variables)  # may be empty
+                deterministic_effects = []
+                for _ in range(int(file_obj.readline())): ## number of deterministic effects --- if =1 -> operator deterministic | if >1 -> operator nondeterministic
+                    deterministic_effects.append(read_deterministic_effect())
+                deterministic_effects = manage_deterministic_effect_preconditions()
+                line = file_obj.readline() ; assert line == "0\n" , line + name # should be zero due to unit cost metric
+                sensing: Variable_Value_pairing = Variable_Value_pairing.read_from(file_obj, variables) # this can in general be more than one variable and on specific values other than zero
+                line = file_obj.readline() ; assert line == "end_operator\n" , line
+                operators.append(Operator(name, precondition, deterministic_effects, sensing))
+            return operators
 
-    with open(filename) as file_obj:
-        check_version(file_obj)
-        check_metric(file_obj)
+        with open(filename) as file_obj:
+            check_version(file_obj)
+            check_metric(file_obj)
 
-        variables = read_variables(file_obj)
-        mutex_groups = read_mutex_groups(file_obj, variables)
-        initial_state = read_init_state(file_obj, variables)
-        goal_assignments = read_goal(file_obj, variables)
-        operators = read_operators(file_obj, variables)
+            variables = read_variables(file_obj)
+            mutex_groups = read_mutex_groups(file_obj, variables)
+            initial_state = read_init_state(file_obj, variables)
+            goal_assignments = read_goal(file_obj, variables)
+            operators = read_operators(file_obj, variables)
 
-        remaining_lines = file_obj.readlines()
-        assert len(remaining_lines) == 1   , remaining_lines[:1]
-        assert remaining_lines[0] == "0\n" , remaining_lines[0]
+            remaining_lines = file_obj.readlines()
+            assert len(remaining_lines) == 1   , remaining_lines[:1]
+            assert remaining_lines[0] == "0\n" , remaining_lines[0]
 
-    return variables , mutex_groups , initial_state , goal_assignments , operators
-
-sas_dir = "benchmarks-pond\\"
-filename = "blocksworld_p1"
-filename = "ubw_p2-1"
-filename = "ubw_p3-1"
-filename = "bw_sense_clear_p1"
-filename = "tidyup_r1_t1_c2_w1"
-filename += ".sas"
-filename = sas_dir + filename
-
-if 1:
-    result = read_SAS_file(filename)
-    for operator in result[4]:
-        print(operator)
-else:
-    with os.scandir(sas_dir) as entries:
-        for entry in entries:
-            if entry.name.endswith(".sas"):
-                print("reading file " + entry.name)
-                read_SAS_file(sas_dir + entry.name)
-
-print("\n\tNO ERRORS FOUND :)\n")
+        return cls(variables , mutex_groups , initial_state , goal_assignments , operators)

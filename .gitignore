@@ -5,3 +5,4 @@ blubb.py
 dd-*
 benchmarks-pond/
 pond-pddl/
+__pycache__/
