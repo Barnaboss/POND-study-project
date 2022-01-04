@@ -1,25 +1,23 @@
 import os
 import warnings
 from io import TextIOWrapper
-from logging import setLogRecordFactory
+from logging import setLogRecordFactory, warn
+
 log_text = ""
 
 class Variable:
     def __init__(self, name: str, values:list[str]) -> None:
         self.name: str = name
         self.values: list[str] = values
-
     def str_value(self, value: int) -> str:
         return self.values[value]
     def __repr__(self) -> str:
         return "Variable(" + self.name + ", " + repr(self.values) + ")"
-
     def __str__(self) -> str:
         return self.name + ":\nvalue:\tsymbolic name:\n" + "\n".join(["{}\t{}".format(value, self.values[value]) for value in range(len(self.values))])
 class Variable_Value_pairing:
     def __init__(self, variable_value_pairing: dict[Variable:int]) -> None:
         self.variable_value_pairing: dict[Variable:int] = variable_value_pairing
-
     @classmethod
     def read_from(cls, file_obj: TextIOWrapper, variables: list[Variable]) -> None:
         var_value_pairs = {}
@@ -27,13 +25,29 @@ class Variable_Value_pairing:
             var_number, var_value = file_obj.readline().strip('\n').split()
             var_value_pairs[variables[int(var_number)]] = int(var_value)
         return cls(var_value_pairs)
-
+    def doesnt_contain(self, variable: Variable) -> bool:
+        return not variable in self.variable_value_pairing
+    def get_value_of(self, variable: Variable) -> int:
+        if self.doesnt_contain(variable):
+            warnings.warn("variable {} not part of pairing {}".format(variable,self),RuntimeWarning)
+            return None
+        else:
+            return self.variable_value_pairing[variable]
+    def append(self, argument) -> None:
+        match argument:
+            case variable, value:
+                if self.doesnt_contain(variable):
+                    self.variable_value_pairing[variable] = value
+                else:
+                    if self.get_value_of(variable) != value:
+                        raise ValueError("{} already contained in {} with different value then {}".format(variable, self, value))
+                    else:
+                        warnings.warn("{} already contained in {} and not changed by .append()")
+            case 
     def __repr__(self) -> str:
         return "Variable_Value_pairing(" + repr(self.variable_value_pairing) + ")"
-
     def __iter__(self) -> list[Variable]:
         return iter(self.variable_value_pairing)
-
     def __str__(self) -> str:
         return " - ".join([variable.str_value(value) for variable, value in self.variable_value_pairing.items()])
 class OneOf_Constraint(Variable_Value_pairing):
@@ -51,10 +65,10 @@ class Or_Constraint(Variable_Value_pairing):
         if constraint_string.startswith("or(("): # this is what i see most of the time: or((var val)(var val)...)
             constraint = constraint_string[4:-2].split(")(")
         elif constraint_string.startswith("or("): # this is what i encountered in ubw_p3-1.sas ... but since or is pretty commutative, it should be ok to ignore the nesting ...
-            warnings.warn("nested or statement in initial state")
+            warnings.warn("initial state: nested or")
             constraint = constraint_string.replace("or","").replace(")(","|").replace("(","").replace(")","").split("|")
         else: # this should really not happen, just to be sure ;)
-            warnings.warn("no \"or(\" at line of or statement!!!")
+            warnings.warn("initial state: no \"or(\" at line of or statement!!!")
             return None
         for var_number, var_value in [var_value_pair_in_string.split() for var_value_pair_in_string in constraint]:
             or_constraint[variables[int(var_number)]] = int(var_value)
@@ -99,6 +113,8 @@ class Initial_State:
         return result
 
 def read_SAS_file(filename: str):
+    def read_int_list(file_obj: TextIOWrapper) -> list[int]:
+        return [int(number) for number in file_obj.readline().strip("\n").split()]
     def check_version(file_obj: TextIOWrapper) -> None:
         line = file_obj.readline() ; assert line == "begin_version\n" , line
         line = file_obj.readline() ; assert line == "3.POND\n"        , line
@@ -144,19 +160,42 @@ def read_SAS_file(filename: str):
         line = file_obj.readline() ; assert line == "end_goal\n" , line
         return goal_variable_assignments
     def read_operators(file_obj: TextIOWrapper, variables: list[Variable]) -> list[Mutex_Group]:
+        def read_deterministic_effect(operator_nondeterministic: bool):
+            deterministic_effect_preconditions = {}
+            atomic_effects = {}
+            for _ in range(int(file_obj.readline())): ## number of atomic effects per deterministic effect
+                num_effect_conditions , variable_number , precondition_value , effect_value = read_int_list(file_obj)
+                affected_variable = variables[variable_number]
+                if num_effect_conditions != 0:
+                    raise ValueError("dont want to deal with conditional effects :(")
+                if precondition_value  != -1:
+                    deterministic_effect_preconditions[affected_variable] = precondition_value
+                atomic_effects[affected_variable] = effect_value
+            return deterministic_effect_preconditions , Variable_Value_pairing(atomic_effects)
+        def manage_deterministic_effect_preconditions():
+            if len(deterministic_effects) = 1:
+                precondition.append(deterministic_effects[0][0])
+        def contradicting_effect_preconditions() -> bool:
+            effect_precondition_found = None
+            for effect in deterministic_effects:
+                if isinstance(effect, tuple):
+                    if effect_precondition_found and effect[0] != effect_precondition_found:
+                        # raise ValueError("nondeterministic operator {}: value precondition on variable {} not part of operator precondition ... don't wand to deal with this kinda mess :(".format(name, variable_number))
+                        pass
         operators = []
         for _ in range(int(file_obj.readline())):
             line = file_obj.readline() ; assert line == "begin_operator\n" , line
             name = file_obj.readline().strip('\n')
-            precondition = Variable_Value_pairing.read_from(file_obj, variables)
-            for _ in range(int(file_obj.readline())): ## number of oneof-effects
-                for _ in range(int(file_obj.readline())): ## number of atomic effects per oneof-effect
-                    file_obj.readline()
-            # ...
+            precondition: Variable_Value_pairing = Variable_Value_pairing.read_from(file_obj, variables)
+            deterministic_effects = []
+            num_deterministic_effects = int(file_obj.readline())
+            for _ in range(num_deterministic_effects): ## number of deterministic effects
+                deterministic_effects.append(read_deterministic_effect(num_deterministic_effects>1))
+            
             line = file_obj.readline() ; assert line == "0\n" , line + name
             sensing = Variable_Value_pairing.read_from(file_obj, variables)
             line = file_obj.readline() ; assert line == "end_operator\n" , line
-            operators.append((name, precondition, sensing))
+            operators.append((name, precondition, deterministic_effects, sensing))
         return operators
 
     with open(filename) as file_obj:
@@ -170,13 +209,19 @@ def read_SAS_file(filename: str):
             initial_state = read_init_state(file_obj, variables)
             if len(warning_list):
                 global log_text
-                log_text += "logs for {}:\n".format(filename)
+                log_text += "{}: ".format(filename)
                 log_text += str(warning_list[0].message) + "\n"
                 for warning in warning_list[1:]:
                     if str(warning.message) != str(warning_list[0].message):
                         log_text += str(warning.message)
         goal_assignments = read_goal(file_obj, variables)
-        operators = read_operators(file_obj, variables)
+        try:
+            operators = read_operators(file_obj, variables)
+        except ValueError as error:
+            for variable in variables:
+                print(variable)
+            raise error
+
 
         remaining_lines = file_obj.readlines()
         assert len(remaining_lines) == 1   , remaining_lines[:1]
@@ -188,12 +233,13 @@ sas_dir = "benchmarks-pond\\"
 filename = "blocksworld_p1"
 filename = "ubw_p2-1"
 filename = "ubw_p3-1"
+filename = "bw_sense_clear_p1"
 filename += ".sas"
 filename = sas_dir + filename
                 #with open("SASparser.log", "w") as logfile_obj:
                 #    logfile_obj.writelines(str(warning_list[0].message))
 
-if 0:
+if 1:
     result = read_SAS_file(filename)
 else:
     with os.scandir(sas_dir) as entries:
@@ -201,5 +247,3 @@ else:
             if entry.name.endswith(".sas"):
                 print("reading file " + entry.name)
                 read_SAS_file(sas_dir + entry.name)
-
-print(log_text)
