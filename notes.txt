@@ -1,0 +1,17 @@
+	git push --set-upstream origin master ... hab ich nicht voll
+	verstanden, aber soweit ich es begreife wird jetzt der master branch
+	von github aus getrackt (also das github hier das eigentliche
+	repository ist sozusagen, so verstehe ich den kaese zumindest)
+
+operators in sas files:
+	first single-number line:		number of (atomic) operator preconditions			>= 0
+		then follows var value paires (one for each atomic operator precondition)
+	second single-number line:		number of possible deterministic effects			>= 1
+		then follows:
+	one single number line:			number of atomic effects for current deterministic effect	>= 0
+		then follows each atomic effect (line with four numbers)
+	IF more than one determ effect (i.e. op is NONdeterm): the above repeats (second single-number times ;)
+	second-to-last single-number line	0 since these are unit cost problems
+	last single-number line			number of sensed variables					>= 0
+
+sensing operators usually start out with 0 1 0 0 and then the sensing part

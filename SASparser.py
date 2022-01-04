@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 import warnings
 from io import TextIOWrapper
 
@@ -22,6 +23,8 @@ class Variable_Value_pairing:
             var_number, var_value = file_obj.readline().strip('\n').split()
             var_value_pairs[variables[int(var_number)]] = int(var_value)
         return cls(var_value_pairs)
+    def len(self) -> int:
+        return len(self.variable_value_pairing)
     def contains(self, variable: Variable) -> bool:
         return variable in self.variable_value_pairing
     def get_value_of(self, variable: Variable) -> int:
@@ -63,10 +66,8 @@ class Mutex_Group:
     def __init__(self, variable_value_pairs: Variable_Value_pairing) -> None:
         self.mutex_var_value_pairs: Variable_Value_pairing = variable_value_pairs
         self.isTrivial: bool = all([var == list(variable_value_pairs)[0] for var in list(variable_value_pairs)[1:]])
-    
     def __repr__(self) -> str:
         return "Mutex_Group(" + repr(self.mutex_var_value_pairs) + ")"
-
     def __str__(self) -> str:
         first_part = "trivial mutex on variable " if self.isTrivial else "non-trivial mutex on these atomic values:\n"
         if self.isTrivial:
@@ -97,6 +98,32 @@ class Initial_State:
         if self.has_or_constraints:
             result += "\nor constaints:\n" + "\n".join([str(or_constraint) for or_constraint in self.or_list])
         return result
+class Operator:
+    def __init__(self, name: str, precondition: Variable_Value_pairing, deterministic_effects: list[Variable_Value_pairing], sensing: Variable_Value_pairing) -> None:
+        self.name = name
+        self.precondition = precondition
+        self.deterministic_effects = deterministic_effects
+        self.sensing = sensing
+    def is_deterministic(self) -> bool:
+        return len(self.deterministic_effects) == 1
+    def is_sensing(self) -> bool:
+        return self.sensing.len() > 0
+    def __str__(self) -> str:
+        result = "operator " + self.name + ":\n"
+        result += "precondition:\t\t" + str(self.precondition) + "\n"
+        if self.is_deterministic():
+            result += "deterministic effect:\t" + str(self.deterministic_effects[0]) + "\n"
+        else:
+            counter = 1
+            for effect in self.deterministic_effects:
+                result += "deterministic effect {}:\t".format(counter) + str(effect) + "\n"
+                counter += 1
+        if self.is_sensing():
+            result += "sensing variables:\t" + str(self.sensing)
+        return result
+    
+#class POND_instance:
+
 
 def read_SAS_file(filename: str):
     def check_version(file_obj: TextIOWrapper) -> None:
@@ -146,7 +173,7 @@ def read_SAS_file(filename: str):
     def read_operators(file_obj: TextIOWrapper, variables: list[Variable]) -> list[Mutex_Group]:
         def read_int_list(file_obj: TextIOWrapper) -> list[int]:
             return [int(number) for number in file_obj.readline().strip("\n").split()]
-        def read_deterministic_effect():
+        def read_deterministic_effect() -> tuple[dict[Variable:int],Variable_Value_pairing]:
             deterministic_effect_preconditions = {}
             atomic_effects = {}
             for _ in range(int(file_obj.readline())): ## number of atomic effects per deterministic effect --- this may be zero (e.g. sensing operators)
@@ -168,12 +195,12 @@ def read_SAS_file(filename: str):
                     result[variable] = value
             return result
         def manage_deterministic_effect_preconditions() -> list[Variable_Value_pairing]:
-            filtered_effect_preconditions = [check_effect_preconditions_against_op_precondition_and_return_those_not_already_contained(effect_precondition) for effect_precondition, _ in deterministic_effects]
+            filtered_effect_preconditions = [check_effect_preconditions_against_op_precondition_and_return_those_not_already_contained(effect_precondition) for effect_precondition , _ in deterministic_effects]
             for effect_precondition in filtered_effect_preconditions[1:]:
                 if effect_precondition != filtered_effect_preconditions[0]:
                     raise ValueError("contradicting effect preconditions ({} VS {}) in operator {}".format(filtered_effect_preconditions[0], effect_precondition, name))
             precondition.append(filtered_effect_preconditions[0])
-            return [atomic_effects for _, atomic_effects in deterministic_effects]
+            return [atomic_effects for _ , atomic_effects in deterministic_effects]
         operators = []
         for _ in range(int(file_obj.readline())):
             line = file_obj.readline() ; assert line == "begin_operator\n" , line
@@ -184,9 +211,9 @@ def read_SAS_file(filename: str):
                 deterministic_effects.append(read_deterministic_effect())
             deterministic_effects = manage_deterministic_effect_preconditions()
             line = file_obj.readline() ; assert line == "0\n" , line + name # should be zero due to unit cost metric
-            sensing = Variable_Value_pairing.read_from(file_obj, variables)
+            sensing: Variable_Value_pairing = Variable_Value_pairing.read_from(file_obj, variables) # this can in general be more than one variable and on specific values other than zero
             line = file_obj.readline() ; assert line == "end_operator\n" , line
-            operators.append((name, precondition, deterministic_effects, sensing))
+            operators.append(Operator(name, precondition, deterministic_effects, sensing))
         return operators
 
     with open(filename) as file_obj:
@@ -210,18 +237,14 @@ filename = "blocksworld_p1"
 filename = "ubw_p2-1"
 filename = "ubw_p3-1"
 filename = "bw_sense_clear_p1"
+filename = "tidyup_r1_t1_c2_w1"
 filename += ".sas"
 filename = sas_dir + filename
 
 if 1:
     result = read_SAS_file(filename)
-    operator = result[4][60]
-    print(operator[0])
-    print(operator[1])
-    for atomic_effect in operator[2]:
-        print("effect:")
-        print(atomic_effect)
-    print(operator[3])
+    for operator in result[4]:
+        print(operator)
 else:
     with os.scandir(sas_dir) as entries:
         for entry in entries:
