@@ -1,10 +1,6 @@
 import os
-from typing import Tuple
 import warnings
 from io import TextIOWrapper
-from logging import setLogRecordFactory, warn
-
-log_text = ""
 
 class Variable:
     def __init__(self, name: str, values:list[str]) -> None:
@@ -59,14 +55,7 @@ class Or_Constraint(Variable_Value_pairing):
     @classmethod
     def read_from(cls, constraint_string: str, variables: list[Variable]) -> None:
         or_constraint = {}
-        if constraint_string.startswith("or(("): # this is what i see most of the time: or((var val)(var val)...)
-            constraint = constraint_string[4:-2].split(")(")
-        elif constraint_string.startswith("or("): # this is what i encountered in ubw_p3-1.sas ... but since or is pretty commutative, it should be ok to ignore the nesting ...
-            warnings.warn("initial state: nested or")
-            constraint = constraint_string.replace("or","").replace(")(","|").replace("(","").replace(")","").split("|")
-        else: # this should really not happen, just to be sure ;)
-            warnings.warn("initial state: no \"or(\" at line of or statement!!!")
-            return None
+        constraint = constraint_string.replace("or","").replace(")(","|").replace("(","").replace(")","").split("|")
         for var_number, var_value in [var_value_pair_in_string.split() for var_value_pair_in_string in constraint]:
             or_constraint[variables[int(var_number)]] = int(var_value)
         return cls(or_constraint)
@@ -110,8 +99,6 @@ class Initial_State:
         return result
 
 def read_SAS_file(filename: str):
-    def read_int_list(file_obj: TextIOWrapper) -> list[int]:
-        return [int(number) for number in file_obj.readline().strip("\n").split()]
     def check_version(file_obj: TextIOWrapper) -> None:
         line = file_obj.readline() ; assert line == "begin_version\n" , line
         line = file_obj.readline() ; assert line == "3.POND\n"        , line
@@ -157,6 +144,8 @@ def read_SAS_file(filename: str):
         line = file_obj.readline() ; assert line == "end_goal\n" , line
         return goal_variable_assignments
     def read_operators(file_obj: TextIOWrapper, variables: list[Variable]) -> list[Mutex_Group]:
+        def read_int_list(file_obj: TextIOWrapper) -> list[int]:
+            return [int(number) for number in file_obj.readline().strip("\n").split()]
         def read_deterministic_effect():
             deterministic_effect_preconditions = {}
             atomic_effects = {}
@@ -206,16 +195,7 @@ def read_SAS_file(filename: str):
 
         variables = read_variables(file_obj)
         mutex_groups = read_mutex_groups(file_obj, variables)
-        with warnings.catch_warnings(record=True) as warning_list:
-            warnings.simplefilter("always")
-            initial_state = read_init_state(file_obj, variables)
-            if len(warning_list):
-                global log_text
-                log_text += "{}: ".format(filename)
-                log_text += str(warning_list[0].message) + "\n"
-                for warning in warning_list[1:]:
-                    if str(warning.message) != str(warning_list[0].message):
-                        log_text += str(warning.message)
+        initial_state = read_init_state(file_obj, variables)
         goal_assignments = read_goal(file_obj, variables)
         operators = read_operators(file_obj, variables)
 
@@ -233,7 +213,7 @@ filename = "bw_sense_clear_p1"
 filename += ".sas"
 filename = sas_dir + filename
 
-if 0:
+if 1:
     result = read_SAS_file(filename)
     operator = result[4][60]
     print(operator[0])
@@ -249,7 +229,4 @@ else:
                 print("reading file " + entry.name)
                 read_SAS_file(sas_dir + entry.name)
 
-with open("SASparser.log", "w") as logfile_obj:
-    logfile_obj.writelines(log_text)
-
-print("\n\t\tNO ERRORS FOUND :)\n")
+print("\n\tNO ERRORS FOUND :)\n")
