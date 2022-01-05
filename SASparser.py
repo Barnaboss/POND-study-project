@@ -1,12 +1,19 @@
 import warnings
 from io import TextIOWrapper
+import math
 
 class Variable:
+    """ self.name : str
+        self.values : list[str] """
     def __init__(self, name: str, values:list[str]) -> None:
         self.name: str = name
         self.values: list[str] = values
+        self.binary_representation_length: int = math.ceil(math.log(len(values),2))
     def str_value(self, value: int) -> str:
         return self.values[value]
+    def get_expression(self, value: int) -> str:
+        bin_value_backward = format(value, '0{}b'.format(self.binary_representation_length))[::-1]
+        return ' & '.join([ ('' if bin_value_backward[index] == '1' else '! ') + self.name + '_' + str(index) for index in range(self.binary_representation_length)])
     def __repr__(self) -> str:
         return "Variable(" + self.name + ", " + repr(self.values) + ")"
     def __str__(self) -> str:
@@ -38,6 +45,10 @@ class Variable_Value_pairing:
         return False
     def append(self, var_value_pairs: dict[Variable:int]) -> None:
         self.variable_value_pairing.update(var_value_pairs)
+    def get_expression(self) -> str:
+        if len(self.variable_value_pairing) == 0:
+            return 'True'
+        return ' & '.join([variable.get_expression(value) for variable , value in self.variable_value_pairing.items()])
     def __repr__(self) -> str:
         return "Variable_Value_pairing(" + repr(self.variable_value_pairing) + ")"
     def __iter__(self) -> list[Variable]:
@@ -73,6 +84,11 @@ class Mutex_Group:
         else:
             return first_part + str(self.mutex_var_value_pairs)
 class Initial_State:
+    """
+        self.fixed_variables: Variable_Value_pairing
+        self.oneof_list: list[OneOf_Constraint]
+        self.or_list: list[Or_Constraint]
+    """
     def __init__(self,
             fixed_variables: Variable_Value_pairing,
             oneof_list: list[OneOf_Constraint],
@@ -83,10 +99,8 @@ class Initial_State:
         self.has_fixed_variables   = bool(len(self.fixed_variables.variable_value_pairing))
         self.has_oneof_constraints = bool(len(self.oneof_list))
         self.has_or_constraints    = bool(len(self.or_list))
-
     def __repr__(self) -> str:
         return "Initial_State(" + repr(self.fixed_variables) + ", " + repr(self.oneof_list) + ", " + repr(self.or_list) + ")"
-    
     def __str__(self) -> str:
         result = ""
         if self.has_fixed_variables:
