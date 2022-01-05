@@ -21,8 +21,14 @@ if 1:
     if 0:
         instance.list_operators(to_file = filename + '.OPlisting.txt')
         instance.list_variables(to_file = filename + '.VARlisting.txt')
-    print(instance.operators[12])
-    print(instance.operators[10])
+    print('=====')
+    print(instance.operators[1])
+    print(instance.operators[1].deterministic_effects[1].get_add_delete_lists())
+    print('=====')
+    print(instance.operators[90])
+    print(instance.operators[90].deterministic_effects[0].get_add_delete_lists())
+    print(instance.operators[90].deterministic_effects[1].get_add_delete_lists())
+    print('=====')
 else:
     with os.scandir(sas_dir) as entries:
         for entry in entries:

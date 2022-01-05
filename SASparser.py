@@ -1,10 +1,13 @@
+import re
 import warnings
 from io import TextIOWrapper
 import math
 
 class Variable:
-    """ self.name : str
-        self.values : list[str] """
+    """ 
+        self.name : str
+        self.values : list[str]
+        """
     def __init__(self, name: str, values:list[str]) -> None:
         self.name: str = name
         self.values: list[str] = values
@@ -14,6 +17,16 @@ class Variable:
     def get_expression(self, value: int) -> str:
         bin_value_backward = format(value, '0{}b'.format(self.binary_representation_length))[::-1]
         return '(' + ' & '.join([ ('' if bin_value_backward[index] == '1' else '! ') + self.name + '_' + str(index) for index in range(self.binary_representation_length)]) + ')'
+    def get_add_delete_lists(self, value: int) -> tuple[list[str],list[str]]:
+        bin_value_backward = format(value, '0{}b'.format(self.binary_representation_length))[::-1]
+        add_list = []
+        delete_list = []
+        for index in range(self.binary_representation_length):
+            if bin_value_backward[index] == '1':
+                add_list.append(self.name + '_' + str(index))
+            else:
+                delete_list.append(self.name + '_' + str(index))
+        return add_list , delete_list
     def __repr__(self) -> str:
         return "Variable(" + self.name + ", " + repr(self.values) + ")"
     def __str__(self) -> str:
@@ -49,6 +62,14 @@ class Variable_Value_pairing:
         if len(self.variable_value_pairing) == 0:
             return 'True'
         return ' & '.join([variable.get_expression(value) for variable , value in self.variable_value_pairing.items()])
+    def get_add_delete_lists(self) -> tuple[list[str],list[str]]:
+        add_list = []
+        delete_list = []
+        for variable, value in self.variable_value_pairing.items():
+            new_add_list , new_delete_list = variable.get_add_delete_lists(value)
+            add_list.extend(new_add_list)
+            delete_list.extend(new_delete_list)
+        return add_list , delete_list
     def __repr__(self) -> str:
         return "Variable_Value_pairing(" + repr(self.variable_value_pairing) + ")"
     def __iter__(self) -> list[Variable]:
@@ -98,7 +119,7 @@ class Initial_State:
         self.fixed_variables: Variable_Value_pairing
         self.oneof_list: list[OneOf_Constraint]
         self.or_list: list[Or_Constraint]
-    """
+        """
     def __init__(self,
             fixed_variables: Variable_Value_pairing,
             oneof_list: list[OneOf_Constraint],
@@ -135,6 +156,26 @@ class Operator:
         return len(self.deterministic_effects) == 1
     def is_sensing(self) -> bool:
         return self.sensing.len() > 0
+    def get_expression(self, declared_variables: list[str]) -> str:
+        def prime(variable_expressions: list[str]) -> list[str]:
+            return [ expression + '\'' for expression in variable_expressions]
+        def get_deterministic_effect_expression(deterministic_effect: Variable_Value_pairing) -> str:
+            def match_final_expression():
+                match ( add_expr , delete_expr , unaffected_expr ) :
+                    case ( '' , '' , _  ) : return unaffected_expr
+                    case ( '' , _  , '' ) : return delete_expr
+                    case ( _  , '' , '' ) : return add_expr
+                    case ( '' , _  , _  ) : return delete_expr + ' & ' + unaffected_expr
+                    case ( _  , '' , _  ) : return add_expr + ' & ' + unaffected_expr
+                    case ( _  , _  , '' ) : return add_expr + ' & ' + delete_expr
+                    case _ : return add_expr + ' & ' + delete_expr + ' & ' + unaffected_expr
+            add_list , delete_list = deterministic_effect.get_add_delete_lists()
+            unaffected_list = list(set(declared_variables) - set(add_list) - set(delete_list))
+            add_expr = ' & '.join(prime(add_list))
+            delete_expr = ' & '.join(prime(['! '+var_expr for var_expr in delete_list]))
+            unaffected_expr = ' & '.join(['('+var_expr+'\' <-> '+var_expr+')' for var_expr in unaffected_list])
+            return '(' +  match_final_expression() + ')'
+        return '(' + ' | '.join([get_deterministic_effect_expression(deterministic_effect) for deterministic_effect in self.deterministic_effects]) + ')'
     def __str__(self) -> str:
         result = "operator " + self.name + ":\n"
         result += "precondition:\t\t" + str(self.precondition) + "\n"
