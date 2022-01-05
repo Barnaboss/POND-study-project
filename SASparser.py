@@ -156,7 +156,9 @@ class Operator:
         return len(self.deterministic_effects) == 1
     def is_sensing(self) -> bool:
         return self.sensing.len() > 0
-    def get_expression(self, declared_variables: list[str]) -> str:
+    def get_precondition_expression(self) -> str:
+        return self.precondition.get_expression()
+    def get_effect_expression(self, declared_variables: list[str]) -> str:
         def prime(variable_expressions: list[str]) -> list[str]:
             return [ expression + '\'' for expression in variable_expressions]
         def get_deterministic_effect_expression(deterministic_effect: Variable_Value_pairing) -> str:

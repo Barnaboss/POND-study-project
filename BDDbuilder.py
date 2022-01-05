@@ -26,35 +26,33 @@ def declare_variables() -> list[str]:
     for var in instance.variables:
         declare_single_variable(var)
     return variables_str_list
-    
+def intersect(f1, f2):
+    return bdd.add_expr('{f1} & {f2}'.format(f1=f1, f2=f2))
+def operator_applicable_in( believe_state, operator: SASP.Operator) -> bool:
+    return believe_state == intersect( believe_state, bdd.add_expr(operator.get_precondition_expression()) )
+def image(believe_state, operator: SASP.Operator):
+    # it should really be made as an Operator method!!! :/ i'll do it by hand for now ...
+    effect = bdd.add_expr(operator.get_effect_expression(declared_variables))
+    substitute_unprimed_for_primed_variables = { var_expr+'\'' : var_expr for var_expr in declared_variables}
+    return bdd.let(substitute_unprimed_for_primed_variables, bdd.exist(declared_variables, intersect(believe_state, effect)))
 declared_variables = declare_variables()
+pickup_b2_b1 = instance.operators[64]
 print(instance.initial_state)
+print(pickup_b2_b1)
+print('===========================')
 initial_state = bdd.add_expr(instance.initial_state.get_expression())
-print('===========================')
-print(instance.operators[12])
-print('operator 12 should be applicable at initial state ...')
-op12_precondition = bdd.add_expr(instance.operators[12].precondition.get_expression())
-assert bdd.add_expr('{initial_state} & {op12_precondition}'.format(initial_state=initial_state, op12_precondition=op12_precondition)) == initial_state
-print('and it is :D')
-print('===========================')
-print(instance.operators[10])
-print('operator 10 NOT should be applicable at initial state ...')
-op10_precondition = bdd.add_expr(instance.operators[10].precondition.get_expression())
-assert bdd.add_expr('{initial_state} & {op10_precondition}'.format(initial_state=initial_state, op10_precondition=op10_precondition)) != initial_state
-print('and it ISN\'T :D')
-print('===========================')
-add_list , delete_list = instance.operators[1].deterministic_effects[1].get_add_delete_lists()
-print(add_list)
-print(delete_list)
-unaffected_list = list(set(declared_variables) - set(add_list) - set(delete_list))
-print(unaffected_list)
-print('===========================')
-example00 = bdd.add_expr('var0_0 <-> var1_0')
-print(example00.to_expr())
-print('===========================')
-print(instance.operators[1])
-print(instance.operators[1].get_expression(declared_variables))
-op1_effect = bdd.add_expr(instance.operators[1].get_expression(declared_variables))
+## don't actually need this stuff now :( ... pickup_b2_b1_precondition = bdd.add_expr(pickup_b2_b1.get_precondition_expression())
+## don't actually need this stuff now :( ... pickup_b2_b1_effect = bdd.add_expr(pickup_b2_b1.get_effect_expression(declared_variables))
+assert not operator_applicable_in( initial_state, instance.operators[60])
+assert operator_applicable_in( initial_state, pickup_b2_b1)
+next_state_manual = bdd.add_expr(' ! var0_0 & var2_0 & var3_0 & ! var4_0 & ! var6_0 & var6_1 & ! var6_2 & var8_0 & ! var8_1 & var8_2 & var9_0 & ! var9_1 & var9_2 & ! var10_0 & ! var10_1 & var10_2 \
+    & ( var1_0 & var5_0 & ! var7_0 & ! var7_1 & ! var7_2  |  ! var1_0 & ! var5_0 & var7_0 & ! var7_1 & var7_2 ) ')
+next_state_manual_safety_check = bdd.add_expr(' ! var0_0 & var2_0 & var3_0 & ! var4_0 & ! var6_0 & var6_1 & ! var6_2 & var8_0 & ! var8_1 & var8_2 & var9_0 & ! var9_1 & var9_2 & ! var10_0 & ! var10_1 & var10_2 \
+    & ! var7_1 & ( var1_0 & var5_0 & ! var7_0 & ! var7_2  |  ! var1_0 & ! var5_0 & var7_0 & var7_2 ) ')
+assert next_state_manual == next_state_manual_safety_check
+next_state = image(initial_state, pickup_b2_b1)
+assert next_state == next_state_manual
 
-instance.operators[10].deterministic_effects[0]
+
+
 print("\n\tNO ERRORS FOUND :)\n")
