@@ -13,7 +13,7 @@ class Variable:
         return self.values[value]
     def get_expression(self, value: int) -> str:
         bin_value_backward = format(value, '0{}b'.format(self.binary_representation_length))[::-1]
-        return ' & '.join([ ('' if bin_value_backward[index] == '1' else '! ') + self.name + '_' + str(index) for index in range(self.binary_representation_length)])
+        return '(' + ' & '.join([ ('' if bin_value_backward[index] == '1' else '! ') + self.name + '_' + str(index) for index in range(self.binary_representation_length)]) + ')'
     def __repr__(self) -> str:
         return "Variable(" + self.name + ", " + repr(self.values) + ")"
     def __str__(self) -> str:
@@ -55,14 +55,6 @@ class Variable_Value_pairing:
         return iter(self.variable_value_pairing)
     def __str__(self) -> str:
         return " - ".join([variable.str_value(value) for variable, value in self.variable_value_pairing.items()])
-class OneOf_Constraint(Variable_Value_pairing):
-    @classmethod
-    def read_from(cls, file_obj: TextIOWrapper, variables: list[Variable]) -> None:
-        line = file_obj.readline().strip('\n').split()
-        oneof_constraint = {}
-        for var_number, var_value in [(line[i], line[i+1]) for i in range(0,len(line),2)]:
-            oneof_constraint[variables[int(var_number)]] = int(var_value)
-        return cls(oneof_constraint)
 class Or_Constraint(Variable_Value_pairing):
     @classmethod
     def read_from(cls, constraint_string: str, variables: list[Variable]) -> None:
@@ -71,6 +63,24 @@ class Or_Constraint(Variable_Value_pairing):
         for var_number, var_value in [var_value_pair_in_string.split() for var_value_pair_in_string in constraint]:
             or_constraint[variables[int(var_number)]] = int(var_value)
         return cls(or_constraint)
+    def get_expression(self) -> str:
+        if len(self.variable_value_pairing) == 0:
+            raise RuntimeError('Or_Constraint empty ... should never happen, so i raise an error here to be sure ;)')
+        return '(' + ' | '.join([variable.get_expression(value) for variable , value in self.variable_value_pairing.items()]) + ')'
+class OneOf_Constraint(Or_Constraint):
+    @classmethod
+    def read_from(cls, file_obj: TextIOWrapper, variables: list[Variable]) -> None:
+        line = file_obj.readline().strip('\n').split()
+        oneof_constraint = {}
+        for var_number, var_value in [(line[i], line[i+1]) for i in range(0,len(line),2)]:
+            oneof_constraint[variables[int(var_number)]] = int(var_value)
+        return cls(oneof_constraint)
+    def get_expression(self) -> str:
+        var_expressions = super().get_expression()[1:-1].split(' | ')
+        mutex_list = [super().get_expression()]
+        for index in range(len(var_expressions)):
+            mutex_list.extend(['!({} & {})'.format(var_expressions[index], other_var_expr) for other_var_expr in var_expressions[index+1:]])
+        return ' & '.join(mutex_list)
 class Mutex_Group:
     def __init__(self, variable_value_pairs: Variable_Value_pairing) -> None:
         self.mutex_var_value_pairs: Variable_Value_pairing = variable_value_pairs
@@ -99,6 +109,11 @@ class Initial_State:
         self.has_fixed_variables   = bool(len(self.fixed_variables.variable_value_pairing))
         self.has_oneof_constraints = bool(len(self.oneof_list))
         self.has_or_constraints    = bool(len(self.or_list))
+    def get_expression(self) -> str:
+        expr_list = [self.fixed_variables.get_expression()]
+        expr_list.extend([oneof_constraint.get_expression() for oneof_constraint in self.oneof_list])
+        expr_list.extend([or_constraint.get_expression() for or_constraint in self.or_list])
+        return ' & '.join(expr_list)
     def __repr__(self) -> str:
         return "Initial_State(" + repr(self.fixed_variables) + ", " + repr(self.oneof_list) + ", " + repr(self.or_list) + ")"
     def __str__(self) -> str:
@@ -250,3 +265,17 @@ class POND_instance:
             assert remaining_lines[0] == "0\n" , remaining_lines[0]
 
         return cls(variables , mutex_groups , initial_state , goal_assignments , operators)
+    def list_operators(self, to_file: str = '') -> None:
+        result = '\n'.join(['{:4d} : {}'.format(operator_index, self.operators[operator_index].name) for operator_index in range(len(self.operators))])
+        if to_file == '':
+            print(result)
+        else:
+            with open(to_file, 'w') as output_file:
+                output_file.writelines(result)
+    def list_variables(self, to_file: str = '') -> None:
+        result = '\n'.join([str(var) for var in self.variables])
+        if to_file == '':
+            print(result)
+        else:
+            with open(to_file, 'w') as output_file:
+                output_file.writelines(result)
