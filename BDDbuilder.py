@@ -36,6 +36,7 @@ def intersect(f1, f2):
     ''' returns bdd f1 & f2 for given bdds fx '''
     return bdd.add_expr('{f1} & {f2}'.format(f1=f1, f2=f2))
 def operator_applicable_in( believe_state, operator: SASP.Operator) -> bool:
+    return believe_state <= bdd.add_expr(operator.get_precondition_expression())
     return believe_state == intersect( believe_state, bdd.add_expr(operator.get_precondition_expression()) )
 def image(believe_state, operator: SASP.Operator):
     # it should really be made as an Operator method!!! :/ i'll do it by hand for now ...

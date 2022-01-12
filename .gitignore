@@ -6,3 +6,4 @@ dd-*
 benchmarks-pond/
 pond-pddl/
 __pycache__/
+*.lnk
