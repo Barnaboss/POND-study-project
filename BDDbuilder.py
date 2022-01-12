@@ -12,21 +12,28 @@ filename = "blocksworld_p1"
 filename += ".sas"
 filename = sas_dir + filename
 
+''' these functions are only for proof of concepting the image operator and action applicability check !!!
+    they need these !!! GLOBAL !!! variables to work correctly (some only the second one):
+        "instance"  : SASP.POND_instance
+        "bdd"       : BDD
+    the "image" function also needs the global variable "declared_variables = declare_variables()"
+'''
+
 instance: SASP.POND_instance = SASP.POND_instance.create_from_SAS_file(filename)
 bdd = BDD()
 
 def declare_variables() -> list[str]:
     variables_str_list = []
     def declare_single_variable(variable: SASP.Variable) -> None:
-        for part_index in range(variable.binary_representation_length):
-            part_index = str(part_index)
-            new_variable_str = variable.name+"_"+part_index
+        for binary_index in range(variable.binary_representation_length):
+            new_variable_str = variable.name+"_" + str(binary_index)
             bdd.declare( new_variable_str , new_variable_str + '\'' )
             variables_str_list.append(new_variable_str)
     for var in instance.variables:
         declare_single_variable(var)
     return variables_str_list
 def intersect(f1, f2):
+    ''' returns bdd f1 & f2 for given bdds fx '''
     return bdd.add_expr('{f1} & {f2}'.format(f1=f1, f2=f2))
 def operator_applicable_in( believe_state, operator: SASP.Operator) -> bool:
     return believe_state == intersect( believe_state, bdd.add_expr(operator.get_precondition_expression()) )
