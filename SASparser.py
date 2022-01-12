@@ -178,6 +178,8 @@ class Operator:
             unaffected_expr = ' & '.join(['('+var_expr+'\' <-> '+var_expr+')' for var_expr in unaffected_list])
             return '(' +  match_final_expression() + ')'
         return '(' + ' | '.join([get_deterministic_effect_expression(deterministic_effect) for deterministic_effect in self.deterministic_effects]) + ')'
+    def get_sensing_expression(self) -> str:
+        return self.sensing.get_expression()
     def __str__(self) -> str:
         result = "operator " + self.name + ":\n"
         result += "precondition:\t\t" + str(self.precondition) + "\n"
