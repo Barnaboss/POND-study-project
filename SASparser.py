@@ -1,4 +1,3 @@
-import re
 import warnings
 from io import TextIOWrapper
 import math
