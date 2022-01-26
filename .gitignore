@@ -7,3 +7,7 @@ benchmarks-pond/
 pond-pddl/
 __pycache__/
 *.lnk
+*plan*
+searchtrees/
+dottling around/
+*.txt

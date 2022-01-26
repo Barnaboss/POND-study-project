@@ -323,3 +323,36 @@ class POND_instance:
         else:
             with open(to_file, 'w') as output_file:
                 output_file.writelines(result)
+    def __str__(self) -> str:
+        result =  'Variables:\n' + '\n'.join([str(var) for var in self.variables])
+        result += '\n============================================================================='
+        result += '\nInitial state:\n' + str(self.initial_state)
+        result += '\n============================================================================='
+        result += '\nGoal:\n' + str(self.goal_assignments)
+        result += '\n============================================================================='
+        result += '\nOperators:\n' + '\n'.join([str(op) for op in self.operators])
+        return result
+
+if __name__ == "__main__":
+    sas_dir = 'benchmarks-pond\\'
+    instance_name = 'bw_sense_clear_p1'
+    instance_name = 'tidyup_r1_t1_c2_w1'     ## sensing with more than one variable
+    instance_name = 'ubw_p2-1'               ## initial one-of and or constraints
+    instance_name = 'ubw_p3-1'               ## initial one-of and or constraints AND nested or statements
+    ## no strong plans for any of these :( !!!
+    instance_name = 'ctp_00_5'               ## SUCCESS :D :D :D
+    instance_name = 'ubw_p2-1'               ## SUCCESS :D :D :D
+    instance_name = 'blocksworld_p1'         ## as expected, the search failes since this problem doesn't have a strong solution
+    instance_name = 'fr-p_1_1'               ## somehow this won't finish within 15 minutes or so, very strange!!!
+    instance_filename = sas_dir + instance_name + '.sas'
+    humanreadable_filename = instance_filename + '.txt'
+
+    instance: POND_instance = POND_instance.create_from_SAS_file(instance_filename)
+    with open(humanreadable_filename,'w') as writeto_obj:
+        writeto_obj.write(str(instance))
+    #instance.list_variables()
+    #for operator in instance.operators:
+    #    print(operator)
+    #print('=================================================================================')
+
+    print("\n\tNO ERRORS FOUND :)\n")

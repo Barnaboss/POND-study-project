@@ -17,3 +17,4 @@ operators in sas files:
 sensing operators usually start out with 0 1 0 0 and then the sensing part
 
 TODO!!!! assert that all operators are EITHER sensing OR acting !!!!! ~~>> should be the case from looking at domain files ...
+TODO!!!! check correct node status propagation !!!!!
