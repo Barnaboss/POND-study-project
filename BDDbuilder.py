@@ -1,8 +1,15 @@
+from re import S
 import SASparser as SASP
-#from dd.cudd import BDD        # TODO: get dd.cudd working
 from dd.autoref import BDD
+import time
+import sys
+import graphviz
 
-def find_plan(POND_instance: SASP.POND_instance):
+problem_infeasible = 'problem infeasible'
+solver_timed_out = 'solver timed out'
+def find_plan(from_file: str, timeout: float = 0.0, debug: str | None = None) -> str:
+    ''' timeout in seconds
+    '''
     def initialize_bdd_and_list_of_bdd_variables():
         def declare_variable_to_bdd(variable: SASP.Variable) -> None:
             for binary_index in range(variable.binary_representation_length):
@@ -24,6 +31,8 @@ def find_plan(POND_instance: SASP.POND_instance):
             else:                       self.status_tag = self.ancestor.__determine_status(belief_state)
         def is_undetermined(self) -> bool:
             return self.status_tag == self.undetermined
+        def disambiguous_name(self) -> str:
+            return str(hash(self.ancestor))+str(self.belief_state)
         def __determine_status(self, caller_belief_state) -> str:
             if self.belief_state == caller_belief_state:    return self.failure
             elif self.ancestor == None:                     return self.undetermined
@@ -36,6 +45,7 @@ def find_plan(POND_instance: SASP.POND_instance):
     class bddOperator:
         def __init__(self, operator: SASP.Operator) -> None:
             self.sasp_operator = operator
+            self.name = operator.name
             self.precondition = bdd.add_expr(operator.get_precondition_expression())
             self.effect = bdd.add_expr(operator.get_effect_expression(list_of_bdd_variables))
             self.sensing_states = bdd.add_expr(operator.get_sensing_expression())
@@ -111,7 +121,7 @@ def find_plan(POND_instance: SASP.POND_instance):
             self.__check_and_propagate_status(of_node=frontier_node)
         def build_plan(self, from_node: SearchNode, indent: int) -> str:
             if from_node.belief_state <= goal:
-                return 'GOAL reached ! :)'
+                return indent*'\t' + 'GOAL reached ! :)\n'
             outgoing_or_arc_targets , outgoing_and_arc_target_pairs = self.arcs[from_node]
             for or_successor in outgoing_or_arc_targets:
                 if or_successor.status_tag == SearchNode.success:
@@ -128,9 +138,46 @@ def find_plan(POND_instance: SASP.POND_instance):
             if self.root.status_tag == SearchNode.success:
                 return self.build_plan(from_node=self.root, indent=0)
             else:
-                return 'no plan found'
+                return problem_infeasible
+        def __extract_depr(self) -> None:
+            dot = graphviz.Digraph( name=from_file.replace('.sas',''), directory='searchtrees', engine='dot')
+            for node in self.arcs:
+                for orarc_target in self.arcs[node][self.OrArc]:
+                    dot.edge( tail_name= str(node.belief_state)
+                            , head_name= str(orarc_target.belief_state)
+                            , label= orarc_target.operator.name)
+                for andarc_target_if , andarc_target_else in self.arcs[node][self.AndArc]:
+                    observation = andarc_target_if.operator.name + str(node.belief_state)
+                    dot.edge( tail_name= str(node.belief_state)
+                            , head_name= observation)
+                    dot.edge( tail_name= observation
+                            , head_name= str(andarc_target_if.belief_state)
+                            , label= 'if')
+                    dot.edge( tail_name= observation
+                            , head_name= str(andarc_target_else.belief_state)
+                            , label= 'else')
+            dot.render()
+        def extract(self) -> None:
+            dot = graphviz.Digraph( name=from_file.replace('benchmarks-pond\\','').replace('.sas',''), directory='searchtrees', engine='dot')
+            for node in self.arcs:
+                for orarc_target in self.arcs[node][self.OrArc]:
+                    dot.edge( tail_name= node.disambiguous_name()
+                            , head_name= orarc_target.disambiguous_name()
+                            , label= orarc_target.operator.name)
+                for andarc_target_if , andarc_target_else in self.arcs[node][self.AndArc]:
+                    observation = andarc_target_if.operator.name + '@' + node.disambiguous_name()
+                    dot.edge( tail_name= node.disambiguous_name()
+                            , head_name= observation)
+                    dot.edge( tail_name= observation
+                            , head_name= andarc_target_if.disambiguous_name()
+                            , label= 'if')
+                    dot.edge( tail_name= observation
+                            , head_name= andarc_target_else.disambiguous_name()
+                            , label= 'else')
+            dot.render()
         ...
 
+    POND_instance: SASP.POND_instance = SASP.POND_instance.create_from_SAS_file(from_file)
     bdd = BDD()
     list_of_bdd_variables = []
     initialize_bdd_and_list_of_bdd_variables()
@@ -138,22 +185,45 @@ def find_plan(POND_instance: SASP.POND_instance):
     goal = bdd.add_expr(POND_instance.goal_assignments.get_expression())
     operators = [ bddOperator(operator) for operator in POND_instance.operators ]
     searchtree = SearchTree()
+
+    start_time = time.time()
+    time_spent_searching = lambda : time.time() - start_time
     while searchtree.still_undetermined():
         searchtree.extend()
-    print('\n' + searchtree.result())
+        if timeout != 0 and time_spent_searching() > timeout:
+            if debug:
+                searchtree.extract()
+            return solver_timed_out
+    if debug:
+        searchtree.extract()
+    return searchtree.result()# + '\nsearch time: {} sec'.format(time_spent_searching())
 
-sas_dir = 'benchmarks-pond\\'
-filename = 'bw_sense_clear_p1'
-filename = 'tidyup_r1_t1_c2_w1'     ## sensing with more than one variable
-filename = 'ubw_p2-1'               ## initial one-of and or constraints
-filename = 'ubw_p3-1'               ## initial one-of and or constraints AND nested or statements
-filename = 'blocksworld_p1'         ## as expected, the search failes since this problem doesn't have a strong solution
-## no strong plans for any of these :( !!!
-filename = 'fr-p_1_1'               ## somehow this won't finish within 15 minutes or so, very strange!!!
-filename = 'ctp_00_5'               ## SUCCESS :D :D :D
-filename += '.sas'
-filename = sas_dir + filename
+if __name__ == "__main__":
+    sas_dir = 'benchmarks-pond\\'
+    if len(sys.argv) > 1:
+        filename = sys.argv[1]
+        if filename[0] == '#':
+            print('skipping '+filename)
+            exit(0)
+    else:
+        filename = 'bw_sense_clear_p1'
+        filename = 'tidyup_r1_t1_c2_w1'     ## sensing with more than one variable
+        filename = 'ubw_p2-1'               ## initial one-of and or constraints
+        filename = 'ubw_p3-1'               ## initial one-of and or constraints AND nested or statements
+        ## no strong plans for any of these :( !!!
+        filename = 'ctp_00_5'               ## SUCCESS :D :D :D
+        filename = 'blocksworld_p1'         ## as expected, the search failes since this problem doesn't have a strong solution
+        filename = 'fr-p_1_1'               ## somehow this won't finish within 15 minutes or so, very strange!!!
+        filename = 'ubw_p2-1'
+        filename += '.sas'
+    filename = sas_dir + filename
+    timeout = float(sys.argv[2])*60 if len(sys.argv) > 2 else 60
 
-find_plan(SASP.POND_instance.create_from_SAS_file(filename))
+    plan = find_plan(from_file=filename, timeout=timeout, debug='yes please')
+    if len(sys.argv) > 3:
+        with open(sys.argv[3],'w') as results_file_obj:
+            results_file_obj.write(plan)
+    else:
+        print('plan for instance '+filename+'\n'+plan)
 
-print("\n\tNO ERRORS FOUND :)\n")
+    print("\n\tNO ERRORS FOUND :)\n")
