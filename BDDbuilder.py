@@ -1,5 +1,3 @@
-from operator import and_
-from numpy import delete
 import SASparser as SASP
 from dd.autoref import BDD
 import time
@@ -110,7 +108,7 @@ def find_plan(from_file: str, timeout: float = 0.0, debug: str | None = None) ->
         def __check_and_propagate_status(self, of_node) -> None:
             if self.__successors_yield_success(of_node): self.__propagate_success(of_node)
             if self.__successors_yield_failure(of_node): self.__propagate_failure(of_node)
-        def extend(self) -> None:
+        def expand(self) -> None:
             def beliefstates_neither_predetermined_nor_redundant() -> bool:
                 if belief_state_when_making_observation == current_belief_state or belief_state_when_NOT_making_observation == current_belief_state:
                     return False ## observation predetermined
@@ -170,8 +168,8 @@ def find_plan(from_file: str, timeout: float = 0.0, debug: str | None = None) ->
             def add_node(search_node: SearchNode) -> str:
                 node_name = str(hash(search_node))
                 label = 'f' if search_node.status_tag == 2 else 's' if search_node.status_tag else 'u'
-                #dot.node( name = node_name , label = label + str(search_node.belief_state) )
-                dot.node( name = node_name , label = label )
+                dot.node( name = node_name , label = label + str(search_node.belief_state)[2:] )
+                #dot.node( name = node_name , label = label )
                 return node_name
             dot = graphviz.Digraph( name=from_file.replace('benchmarks-pond\\','').replace('.sas',''), directory='searchtrees', engine='dot')
             for search_node in self.arcs:
@@ -206,7 +204,7 @@ def find_plan(from_file: str, timeout: float = 0.0, debug: str | None = None) ->
     def time_spent_searching() -> float: return time.time() - start_time
     step = 1
     while searchtree.still_undetermined():
-        searchtree.extend()
+        searchtree.expand()
         if debug == 'step':
             print('{}. searchtree extention complete (total runtime: {}sec) ...'.format(step,time_spent_searching()))
             step += 1
@@ -237,7 +235,7 @@ if __name__ == "__main__":
         filename = 'fr-p_1_1'               ## somehow this won't finish within 15 minutes or so, very strange!!!
         filename += '.sas'
     filename = sas_dir + filename
-    timeout = float(sys.argv[2])*60 if len(sys.argv) > 2 else 1.5
+    timeout = float(sys.argv[2])*60 if len(sys.argv) > 2 else 3
 
     plan = find_plan(from_file=filename, timeout=timeout, debug='step')
     if len(sys.argv) > 3:
