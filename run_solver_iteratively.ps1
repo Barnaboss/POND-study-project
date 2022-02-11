@@ -1,0 +1,1 @@
+foreach($line in Get-Content feasible.txt) { py solver_0_pure_paper.py "$line" 30 "feasible-run-30.log" }

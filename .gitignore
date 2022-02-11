@@ -11,3 +11,4 @@ __pycache__/
 searchtrees/
 dottling around/
 *.txt
+*.log
