@@ -3,6 +3,21 @@ from dd.autoref import BDD
 import time
 import sys
 import logging
+import graphviz
+
+""" calling convention:
+        py  strongPONDsolver.py  instance_filename  stats_logfile  minutes_timeout  planout_filename  dotout_filename  options*
+    if instance_filename starts with '#': exit(0) [for marking files in lists not to execute again for example]
+    options:
+        pp  (acryn for 'pure_paper')                    :   solve without pruning and redundancy checks
+        cro (acryn for 'check_redundant_observations')  :   check obs for redundancy when expanding
+        cra (acryn for 'check_redundant_actions')       :   check actions for redundancy when expanding
+        crn (acryn for 'check_redundant_nextnode')      :   check any next node for redundancy when expanding
+        pfs (acryn for 'prune_failee_siblings')         :   propagate failure towards leaves for and-arc siblings
+        pss (acryn for 'prune_succeeders_siblings')     :   propagate failure towards leaves for any siblings when propagating success
+    to skip plan or dot output, use NOOUT as 4th respectively 5th argument if you still want to provide options
+    no options will make solver use all pruning and checks
+"""
 
 """ =========== GLOBALS =========== """
 default_logfilename = 'strongPONDsolver.log'
@@ -12,7 +27,7 @@ problem_infeasible  = 'fail'
 solver_timed_out    = 'time'
 """ ------------------------------- """
 
-def find_plan(from_file: str, timeout: float, options: list[str]) -> str:
+def find_plan(from_file: str, timeout: float, options: list[str], planout_filename: str | None, dotout_filename: str | None) -> str:
     if len(options) == 1:
         options = options[0].split(' ')
         logging.debug(options)
@@ -155,6 +170,41 @@ def find_plan(from_file: str, timeout: float, options: list[str]) -> str:
             if self.__successors_yield_success(frontier_node): self.__propagate_success(frontier_node)
             elif self.__successors_yield_failure(frontier_node): self.__propagate_failure(frontier_node)
             return len(self.arcs[frontier_node][self.AndArc]) + len(self.arcs[frontier_node][self.OrArc])   
+        def build_plan(self, from_node: SearchNode, indent: int) -> str:
+            if from_node.belief_state <= goal:
+                return indent*'\t' + 'GOAL reached ! :)\n'
+            outgoing_or_arc_targets , outgoing_and_arc_target_pairs = self.arcs[from_node]
+            for or_successor in outgoing_or_arc_targets:
+                if or_successor.status_tag == SearchNode.success:
+                    return indent*'\t' + or_successor.operator.name + '\n' + self.build_plan(from_node=or_successor, indent=indent)
+            for and_successor_1 , and_successor_2 in outgoing_and_arc_target_pairs:
+                if and_successor_1.status_tag == SearchNode.success and and_successor_2.status_tag == SearchNode.success:
+                    return indent*'\t' + 'if ' + and_successor_1.operator.name + ':\n' \
+                            + self.build_plan(from_node=and_successor_1, indent=indent+1) \
+                        +  indent*'\t' + 'else:\n' \
+                            + self.build_plan(from_node=and_successor_2, indent=indent+1)
+        def extract(self) -> None:
+            def add_node(search_node: SearchNode) -> str:
+                node_name = str(hash(search_node))
+                label = 'f' if search_node.status_tag == 2 else 's' if search_node.status_tag else 'u'
+                dot.node( name = node_name , label = label + str(search_node.belief_state)[2:] ) ### for when you also want to see which nodes share same belief state
+                #dot.node( name = node_name , label = label ) ### for when you only want to print nodes with their tag
+                return node_name
+            dot = graphviz.Digraph( name=dotout_filename, engine='dot')
+            for search_node in self.arcs:
+                searchnode_name = add_node(search_node)
+                for orarc_target in self.arcs[search_node][self.OrArc]:
+                    target_name = add_node(orarc_target)
+                    dot.edge( tail_name= searchnode_name , head_name= target_name , label= orarc_target.operator.name)
+                for andarc_target_if , andarc_target_else in self.arcs[search_node][self.AndArc]:
+                    observation_nodename = str(hash(andarc_target_if.operator.name+str(hash(search_node))))
+                    dot.node( name=observation_nodename , label=andarc_target_if.operator.name )
+                    if_nodename = add_node(andarc_target_if)
+                    else_nodename = add_node(andarc_target_else)
+                    dot.edge( tail_name=searchnode_name , head_name=observation_nodename)
+                    dot.edge( tail_name=observation_nodename , head_name=if_nodename , label='if')
+                    dot.edge( tail_name=observation_nodename , head_name=else_nodename , label='el')
+            dot.save()
         ...
 
     POND_instance: SASP.POND_instance = SASP.POND_instance.create_from_SAS_file(from_file)
@@ -175,36 +225,28 @@ def find_plan(from_file: str, timeout: float, options: list[str]) -> str:
     while searchtree.root.is_undetermined():
         nodes_created += searchtree.expand()
         expansions += 1
-        if time_spent_searching() > timeout:
-            break
+        if time_spent_searching() > timeout: break
     if searchtree.root.status_tag == SearchNode.success:
         result = solution_found
+        if planout_filename:
+            with open(planout_filename, 'w') as planout_fileobj:
+                planout_fileobj.write(searchtree.build_plan(searchtree.root,0))
     elif searchtree.root.status_tag == SearchNode.failure:
         result = problem_infeasible
     else:
         result = solver_timed_out
     logging.info(from_file + '[opt]=' + str(options) + ': ' + result + '\t[prob-size(binvars|ops) >> nodes(expanded)/sec\t({}|{}) >> {}({})/{:.4f}]'.format(
             len(list_of_bdd_variables),len(operators),nodes_created,expansions,time_spent_searching()))
+    if dotout_filename:
+        searchtree.extract()
 
 if __name__ == "__main__":
-    """ calling convention: py strongPONDsolver.py instance_filename stats_logfile minutes_timeout planout_filename dotout_filename options*
-            if instance_filename starts with '#': exit(0)
-            options:
-                pp  | pure_paper                    :   solve without pruning and redundancy checks
-                cro | check_redundant_observations  :   check obs for redundancy when expanding
-                cra | check_redundant_actions       :   check actions for redundancy when expanding
-                crn | check_redundant_nextnode      :   check any next node for redundancy when expanding
-                pfs | prune_failee_siblings         :   propagate failure towards leaves for and-arc siblings
-                pss | prune_succeeders_siblings     :   propagate failure towards leaves for any siblings when propagating success
-            to skip plan or dot output, use NOOUT as 4th respectively 5th argument if you still want to provide options
-            no options will make solver use all pruning and checks
-    """
-
     logfilename = sys.argv[2] if len(sys.argv) > 2 else default_logfilename
     logging.basicConfig(filename=logfilename, encoding='utf-8',
         format='%(asctime)s %(levelname)-8s %(message)s',
         level=logging.INFO,
         datefmt='%Y-%m-%d %H:%M:%S')
+    logging.debug(str(sys.argv))
 
     if len(sys.argv) > 1:
         filename = sys.argv[1]
@@ -222,8 +264,8 @@ if __name__ == "__main__":
         filename = 'benchmarks-pond\\' + filename + '.sas'
 
     timeout = float(sys.argv[3])*60 if len(sys.argv) > 3 else 360
-
-    logging.debug(str(sys.argv))
-    find_plan(from_file=filename, timeout=timeout, options=sys.argv[6:])
+    planout_filename= sys.argv[4]   if len(sys.argv) > 4 and sys.argv[4] != 'NOOUT' else None
+    dotout_filename= sys.argv[5]    if len(sys.argv) > 5 and sys.argv[5] != 'NOOUT' else None
+    find_plan(from_file=filename, timeout=timeout, options=sys.argv[6:], planout_filename=planout_filename, dotout_filename=dotout_filename)
 
     print("\n\tNO ERRORS FOUND :)\n")

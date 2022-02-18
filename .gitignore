@@ -1,15 +1,5 @@
-blubb.py
 *.sw?
-*.zip
 *.un~
-dd-*
 benchmarks-pond/
 pond-pddl/
 __pycache__/
-*.lnk
-*plan*
-searchtrees/
-dottling around/
-*.txt
-*.log
-stats_evaluation/
