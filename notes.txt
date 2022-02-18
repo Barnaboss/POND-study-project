@@ -16,9 +16,7 @@ operators in sas files:
 
 sensing operators usually start out with 0 1 0 0 and then the sensing part
 
-TODO!!!! assert that all operators are EITHER sensing OR acting !!!!! ~~>> should be the case from looking at domain files ...
-TODO!!!! check correct node status propagation !!!!!
+statistics runs:
+	canceled plain paper solver infeasible workload after tidyup_r3_t6_c6_w7.sas
 
-powershell:
-	foreach($line in Get-Content file.txt) { py BDDbuilder.py "$line" 60 "$line.plan"}
 dot -T{pdf|png|...} -O GV-file

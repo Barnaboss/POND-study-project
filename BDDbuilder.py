@@ -7,8 +7,6 @@ import graphviz
 problem_infeasible = 'problem infeasible'
 solver_timed_out = 'solver timed out'
 def find_plan(from_file: str, timeout: float = 0.0, debug: str | None = None) -> str:
-    ''' timeout in seconds
-    '''
     def initialize_bdd_and_list_of_bdd_variables():
         def declare_variable_to_bdd(variable: SASP.Variable) -> None:
             for binary_index in range(variable.binary_representation_length):
@@ -233,6 +231,7 @@ if __name__ == "__main__":
         filename = 'blocksworld_p1'         ## as expected, the search failes since this problem doesn't have a strong solution
         filename = 'ubw_p2-1'               ## SUCCESS :D :D :D
         filename = 'fr-p_1_1'               ## somehow this won't finish within 15 minutes or so, very strange!!!
+        filename = 'ubw_p5-1'               ##TODO:!!! problem cant be initialized >> some error when creating (huge) init-belief-state bdd
         filename += '.sas'
     filename = sas_dir + filename
     timeout = float(sys.argv[2])*60 if len(sys.argv) > 2 else 3
