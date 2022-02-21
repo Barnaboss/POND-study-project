@@ -190,7 +190,7 @@ def find_plan(from_file: str, timeout: float, options: list[str], planout_filena
                 dot.node( name = node_name , label = label + str(search_node.belief_state)[2:] ) ### for when you also want to see which nodes share same belief state
                 #dot.node( name = node_name , label = label ) ### for when you only want to print nodes with their tag
                 return node_name
-            dot = graphviz.Digraph( name=dotout_filename, engine='dot')
+            dot = graphviz.Digraph( filename=dotout_filename, engine='dot')
             for search_node in self.arcs:
                 searchnode_name = add_node(search_node)
                 for orarc_target in self.arcs[search_node][self.OrArc]:
